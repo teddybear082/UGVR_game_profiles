@@ -12,15 +12,15 @@ UGVR works by dropping its VR injector files into your game directory.  This web
 
 ## How do I use these files?
 
-The site itself will contain underlying source code of each set of files so I can track changes over time, but most users should probably just head to the releases page (), fimd the game they are interested in playing in VR and download the release for it.  
+The site itself will contain underlying source code of each set of files so I can track changes over time, but most users should probably just head to the **releases** page (https://github.com/teddybear082/UGVR_game_profiles/releases), find the game they are interested in playing in VR and download the release for it.  
 
-Each release will include all UGVR files needed for each game, so the goal is that people who just want to play don't really have to touch the underlying UGVR github page.
+Each release will include **all UGVR files needed for each game**, so the goal is that people who just want to play don't really have to touch the underlying UGVR github page.
 
-Just download the release for the game you want to play, amd unzip the contents as loose files into the folder where the game is installed (e.g. where the game .exe file is).  Then start the game and it should launch in VR if your headset is active and running.  In Steam, you can find where the game is installed by clicking the settings wheel by the game, then manage and then browse local files.
+Just **download the release for the game you want to play**, and **unzip** the contents as **loose files** into the folder where the game is installed (e.g. where the game .exe file is).  Then start the game and it should launch in VR if your headset is active and running.  In Steam, you can find where the game is installed by clicking the settings wheel by the game, then manage and then browse local files.
 
 ## How do I go back to playing my game in flatscreen mode?
 
-Just rename override.cfg to anything else, for example no-override.cfg.  Then the injector won't inject.  Rename back to override.cfg to play in VR again.
+Just rename **override.cfg** to anything else, for example no-override.cfg.  Then the injector won't inject.  Rename back to override.cfg to play in VR again.
 
 ## Why isn't the game launching in VR?
 
