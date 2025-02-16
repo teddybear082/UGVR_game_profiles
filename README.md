@@ -8,7 +8,7 @@ UGVR aims to add basic virtual reality functionality to 3D games made in the God
 
 ## What are these files?
 
-UGVR works by dropping its VR injector files into your game directory.  This website will host versions of UGVR with configiration files that either I or someome else has personally manually configred and tested.  Some will have custom code built in for games, or certain special options turned on.  You can still manually edit any of the configuration files but the aim is for files here to be "a great start with X game."
+UGVR works by dropping its VR injector files into your game directory.  This website will host versions of UGVR with configiration files that either I or someone else has personally manually configured and tested.  Some will have custom code built in for games, or certain special options turned on.  You can still manually edit any of the configuration files but the aim is for files here to be "a great start with X game."
 
 ## How do I use these files?
 
