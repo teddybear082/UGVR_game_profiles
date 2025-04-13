@@ -22,9 +22,11 @@ func _ready():
 	pass
 
 # Called only once after xr scene and all convenience variables are set, insert any code you want to run then here
+# Note that you can now access any of the xr scene variables directly, example: xr_scene.xr_pointer.enabled=false
 func _on_xr_setup_run_once():
-	pass
-
+	#pass
+	xr_scene.xr_pointer.set_enabled(false)
+	
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta):
 	# Don't try to run code if xr_scene not set yet
