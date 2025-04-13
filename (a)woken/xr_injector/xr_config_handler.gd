@@ -16,15 +16,15 @@ signal xr_game_action_map_cfg_loaded(path : String)
 var needs_mapping_phrase = "needs_joypad_mapping"
 
 var default_action_map_actions = [
-	"ui_accept",
-	"ui_select", 
-	"ui_cancel", 
+	#"ui_accept",
+	#"ui_select", 
+	#"ui_cancel", 
 	"ui_focus_next",
 	"ui_focus_prev",
-	"ui_left",
-	"ui_right",
-	"ui_up",
-	"ui_down",
+	#"ui_left",
+	#"ui_right",
+	#"ui_up",
+	#"ui_down",
 	"ui_page_up",
 	"ui_page_down", 
 	"ui_home",
