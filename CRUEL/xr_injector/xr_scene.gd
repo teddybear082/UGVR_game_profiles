@@ -33,10 +33,13 @@ extends Node3D
 @onready var xr_reparenting_node_holder : Node3D = xr_reparenting_node.get_node("XRReparentingNodeHolder")
 @onready var xr_gui_menu : Node3D = get_node("XRGUIMenu")
 
-# Inrernal variables for xr hands and material (will be set in script)
+# Internal variables for xr hands and material (will be set in script)
 var show_xr_hands : bool = true
 var xr_hand_material = preload("res://xr_injector/hands/materials/labglove_transparent.tres")
 var xr_hand_material_choice : int = 0
+
+# Internal variable for custom game script
+var custom_game_script : Node
 
 # Internal variables to hold emulated gamepad/joypad events that are triggered by motion controllers
 var secondary_x_axis : InputEventJoypadMotion = InputEventJoypadMotion.new()
@@ -219,10 +222,11 @@ var secondary_viewport_offset : Vector3 = Vector3(0,0,0)
 var autosave_action_map_duration_in_secs : int = 0
 
 # Experimental variables only - not for final mod - use to test reparenting nodes to VR controllers
+var use_test_object_reparenting_code : bool = false
 var use_vostok_gun_finding_code : bool = false
 var use_beton_gun_finding_code : bool = false
 var use_tar_object_picker_finding_code : bool = false
-var use_CRUEL_gun_finding_code : bool = true
+var use_CRUEL_gun_finding_code : bool = false
 var currentRID = null
 
 func _ready() -> void:
@@ -278,9 +282,17 @@ func _ready() -> void:
 	# Set up XR hand materials
 	xr_left_hand.hand_material_override = xr_hand_material
 	xr_right_hand.hand_material_override = xr_hand_material
+	
+	# Set up custom game script node
+	custom_game_script = load("res://xr_injector/custom_scripts/custom_game_script.gd").new()
+	add_child(custom_game_script)
+	custom_game_script.set_xr_scene(self)
 
 func _process(_delta : float) -> void:
 	# Experimental for time being, later will have handle_node_reparenting function here and any function to assign node passing its value to it
+	if use_test_object_reparenting_code:
+		_reparent_test_object(_delta)
+
 	if use_vostok_gun_finding_code:
 		_set_vostok_gun(_delta)
 	
@@ -429,6 +441,19 @@ func map_xr_controllers_to_action_map() -> bool:
 			if event is InputEventJoypadButton:
 				print(event)
 	
+	# Check if wrong signals connected to controllers (checking one being wrong should be enough since we always handle together;
+	# if so, disconnect controller signals before proceeding, this means user changed their primary controller in the XR GUI
+	if primary_controller.button_pressed.is_connected(handle_secondary_xr_inputs):
+		print("Previous conflicting xr controller signal connections found, user must have changed input hands. Disconnecting old signals...")
+		primary_controller.button_pressed.disconnect(handle_secondary_xr_inputs)
+		primary_controller.button_released.disconnect(handle_secondary_xr_release)
+		primary_controller.input_float_changed.disconnect(handle_secondary_xr_float)
+		primary_controller.input_vector2_changed.disconnect(secondary_stick_moved)
+		secondary_controller.button_pressed.disconnect(handle_primary_xr_inputs)
+		secondary_controller.button_released.disconnect(handle_primary_xr_release)
+		secondary_controller.input_float_changed.disconnect(handle_primary_xr_float)
+		secondary_controller.input_vector2_changed.disconnect(primary_stick_moved)
+	
 	# Connect controller button and joystick signals to handlers
 	secondary_controller.connect("button_pressed", Callable(self, "handle_secondary_xr_inputs"))
 	primary_controller.connect("button_pressed", Callable(self,"handle_primary_xr_inputs"))
@@ -475,6 +500,15 @@ func map_xr_controllers_to_action_map() -> bool:
 	# Set GUI Detection Area Layer on Secondary Controller to 0 to prevent menu issues, set primary to layer 32 (2147483648) in case primary and secondary controllers have changed.
 	secondary_controller.get_node("GUIDetectionArea").collision_layer = 0
 	primary_controller.get_node("GUIDetectionArea").collision_layer = 2147483648
+	
+	# Make sure radial menu controller is set properly after possible switch of primary controller
+	if is_instance_valid(xr_radial_menu):
+		xr_radial_menu.set_controller(primary_controller)
+	
+	# Place viewports at proper location based on user config after possible switch of primary controller
+	reparent_viewport(xr_main_viewport2d_in_3d, xr_main_viewport_location)
+	reparent_viewport(xr_secondary_viewport2d_in_3d, xr_secondary_viewport_location)
+	
 	# Return true to alert that function is completed
 	return true
 	
@@ -486,6 +520,8 @@ func handle_primary_xr_inputs(button):
 	if button == pointer_gesture_toggle_button and gesture_area.overlaps_area(primary_detection_area):
 		xr_pointer.set_enabled(!xr_pointer.enabled)
 		toggle_xr_gui_menu()
+		# If we're using a special gesture, don't trigger the underlying game action
+		return
 	
 	# (Temporary) Set user height if user presses designated button while doing gesture
 	if button == gesture_set_user_height_button and gesture_area.overlaps_area(primary_detection_area):
@@ -493,6 +529,8 @@ func handle_primary_xr_inputs(button):
 		user_height = xr_camera_3d.transform.origin.y
 		print("User height: ", user_height)
 		apply_user_height(user_height)
+		# If we're using a special gesture, don't trigger the underlying game action
+		return
 	
 	# Temporary : Try toggling active camera for xr camera to follow manually	
 	if button == gesture_toggle_active_camera_button and gesture_area.overlaps_area(primary_detection_area):
@@ -511,6 +549,8 @@ func handle_primary_xr_inputs(button):
 			set_camera_as_current(selected_camera)
 		# Increase index for next time button is pressed
 		manual_set_possible_xr_cameras_idx -=1
+		# If we're using a special gesture, don't trigger the underlying game action
+		return
 	
 	# Block other inputs if ugvr menu is up to prevent game actions while using ugvr menu
 	if ugvr_menu_showing:
@@ -533,10 +573,6 @@ func handle_primary_xr_inputs(button):
 	
 # Handle release of buttons on primary controller
 func handle_primary_xr_release(button):
-	# Block other inputs if ugvr menu is up to prevent game actions while using ugvr menu
-	if ugvr_menu_showing:
-		return
-	
 	#print("primary button released: ", button)
 	if button == dpad_activation_button:
 		dpad_toggle_active = false
@@ -556,12 +592,12 @@ func handle_secondary_xr_inputs(button):
 	#print("secondary button pressed: ", button)
 
 	# If pressing pointer activation button and making gesture, toggle UGVR menu - next step make this the chord defined in UGVR config option
-	if button == pointer_gesture_toggle_button and gesture_area.overlaps_area(secondary_detection_area):
+	#if button == pointer_gesture_toggle_button and gesture_area.overlaps_area(secondary_detection_area):
 		# Hold for future use - Insert code here to make new UGVR menu or scene pop up
-		if ugvr_menu_showing:
-			xr_pointer.collision_mask = 4194304 # layer 23 - layer ugvr menu is now on
-		else:
-			xr_pointer.collision_mask = 1048576 #  layer 21 - layer the other two viewports are now on
+		#if ugvr_menu_showing:
+			#xr_pointer.collision_mask = 4194304 # layer 23 - layer ugvr menu is now on
+		#else:
+			#xr_pointer.collision_mask = 1048576 #  layer 21 - layer the other two viewports are now on
 
 	# If button is assigned to load action map (temporary,this should be a GUI option) and making gesture, load action map
 	if button == gesture_load_action_map_button and gesture_area.overlaps_area(secondary_detection_area):
@@ -573,6 +609,8 @@ func handle_secondary_xr_inputs(button):
 
 		# Print scene tree to game log for modding / debug purposes - this is better than doing it constantly, and makes sense since this button combo will only be used intentionally
 		get_tree().current_scene.print_tree_pretty()
+		# If we're using a special gesture, don't trigger the underlying game action
+		return
 
 	
 	# Block other inputs if ugvr menu is up to prevent game actions while using ugvr menu
@@ -599,9 +637,6 @@ func handle_secondary_xr_inputs(button):
 	
 # Handle release of buttons on VR Controller assigned as secondary	
 func handle_secondary_xr_release(button):
-	# Block other inputs if ugvr menu is up to prevent game actions while using ugvr menu
-	if ugvr_menu_showing:
-		return
 	#print("secondary button released: ", button)
 	if button == start_button:
 		var event = InputEventJoypadButton.new()
@@ -806,76 +841,111 @@ func _handle_rotation(angle : float) -> void:
 	rot = rot.rotated(Vector3(0.0, -1.0, 0.0), angle) ## <-- this is the rotation around the camera
 	xr_origin_3d.transform = (xr_origin_3d.transform * t2 * rot * t1).orthonormalized()
 # ---------------------END OF DECASIS STICK TURNING CODE -----------------------------------------------
+class ReparentedNode: 
+	var xr_scene
+	var reparented_node : Node3D
+	var target_node : Node3D
+	var rotate_180 : bool = false
+	var primary_controller: Node3D
+	var secondary_controller: Node3D
+	var target_offset : Vector3
+	var active : bool = true
+	var reparenting_node : Node3D
+	var reparenting_node_holder : Node3D
+	
+	func _init(new_xr_scene):
+		self.xr_scene = new_xr_scene
+		self.reparented_node = null
+		self.target_node = null
+		self.rotate_180 = false
+		self.primary_controller = null
+		self.secondary_controller = null
+		self.target_offset = Vector3.ZERO
+		self.reparenting_node = null
+		self.reparenting_node_holder = null
+		self.reparenting_node = Node3D.new()
+		self.reparenting_node_holder = Node3D.new()
+		self.xr_scene.add_child(self.reparenting_node)
+		reparenting_node.add_child(self.reparenting_node_holder)
 
-# Handle reparenting game elements
-# Reparented node is the node passed to the function to be attached to the primary controller, use rotate if the model has z going the wrong direction, use target offset to better place the object in the XR hand
-func handle_node_reparenting(delta : float, reparented_node : Node3D, rotate_reparented_node_180_degrees : bool, target_offset: Vector3 = Vector3(0,0,0)):
-
-	if not is_instance_valid(primary_controller) or not is_instance_valid(secondary_controller):
-		return
+	func set_variables(reparented_node: Node3D, target_node: Node3D, rotate_180 : bool, primary_controller : XRController3D, secondary_controller : XRController3D, target_offset : Vector3 = Vector3.ZERO, active : bool = true):
+		self.reparented_node = reparented_node
+		self.target_node = target_node
+		self.rotate_180 = rotate_180
+		self.primary_controller = primary_controller
+		self.secondary_controller = secondary_controller
+		self.target_offset = target_offset
 	
-	if xr_reparenting_active and is_instance_valid(reparented_node):
-	
-		reparented_node.set_as_top_level(true)
-	
-		if secondary_controller.is_button_pressed("grip"):
-			if (secondary_controller.global_transform.origin - primary_controller.global_transform.origin).length() <= 0.35:
-				xr_two_handed_aim = true
+	func set_active(value):
+		active = value
+		
+	func handle_node_reparenting():
+		var xr_two_handed_aim = false
+		if not is_instance_valid(primary_controller) or not is_instance_valid(secondary_controller):
+			return
+		
+		if active and is_instance_valid(reparented_node):
+		
+			reparented_node.set_as_top_level(true)
+		
+			if secondary_controller.is_button_pressed("grip"):
+				if (secondary_controller.global_transform.origin - primary_controller.global_transform.origin).length() <= 0.35:
+					xr_two_handed_aim = true
+				else:
+					xr_two_handed_aim = false
 			else:
 				xr_two_handed_aim = false
-		else:
-			xr_two_handed_aim = false
-	
-		if xr_two_handed_aim == true:
-			xr_reparenting_node.global_transform.origin = primary_controller.global_transform.origin
-			var dir = (primary_controller.global_position - secondary_controller.global_position).normalized()
-			if rotate_reparented_node_180_degrees:
-				dir = (secondary_controller.global_position - primary_controller.global_position).normalized()
-			xr_reparenting_node.global_transform.basis = xr_reparenting_node.global_transform.basis.looking_at(dir, Vector3.UP, true)
-		else:
-			xr_reparenting_node.global_transform = primary_controller.global_transform
-			
-		if rotate_reparented_node_180_degrees and not xr_two_handed_aim:
-			xr_reparenting_node_holder.rotation_degrees = Vector3(0,180,0)
-		else:
-			xr_reparenting_node_holder.rotation_degrees = Vector3(0,0,0)
-
-		xr_reparenting_node_holder.transform.origin = target_offset
-		handle_reparented_node_smoothing(delta, xr_reparenting_node_holder, reparented_node, rotate_reparented_node_180_degrees)
-
-# Try to smooth movement of reparented node to minimize jitter
-func handle_reparented_node_smoothing(delta : float, source_node : Node3D, destination_node : Node3D, rotate_reparented_node_180_degrees : bool):
-	if is_instance_valid(source_node) and is_instance_valid(destination_node):
-
-		# Set lerp speed to current FPS
-		var attach_lerp_speed : float = float(Performance.get_monitor(Performance.TIME_FPS))
-		var lerp_speed = attach_lerp_speed * delta
-		# Get target rotation and position from source node
-		var new_pose_rotation = source_node.global_transform.basis.get_rotation_quaternion()
-		var new_position = source_node.global_transform.origin
-		# Get current destination node rotation and position
-		var last_pose_rotation = destination_node.global_transform.basis.get_rotation_quaternion()
-		var last_position = destination_node.global_transform.origin
-
-		# Get dot product of destination node's rotation and source node's rotation
-		# If the dot product is close to 1, it means the orientations are very similar, while if it's closer to -1, they are nearly opposite.
-		var spherical_distance = new_pose_rotation.dot(last_pose_rotation)
-
-		if (spherical_distance  < 0.0):
-			spherical_distance = -spherical_distance
-
-		# Get distance between source and destination node and scale smoothing to distance
-		var lenr = maxf(1.0, (new_position - last_position).length())
 		
-		# Lerp destination node's rotation and postion to source node's values, scaled by amount of difference between the two
-		# For some reason this does not work when we have to rotate the object by 180 degrees, so disabling for now in that circumstance
-		if rotate_reparented_node_180_degrees:
-			last_pose_rotation = source_node.global_transform.basis
-		else:	
-			last_pose_rotation = Basis(last_pose_rotation.slerp(new_pose_rotation, lerp_speed * spherical_distance))
-		last_position = last_position.lerp(new_position, minf(1.0, lerp_speed * lenr))
-		destination_node.global_transform.basis = last_pose_rotation
-		destination_node.global_transform.origin = last_position
+			if xr_two_handed_aim == true:
+				reparenting_node.global_transform.origin = primary_controller.global_transform.origin
+				var dir = (primary_controller.global_position - secondary_controller.global_position).normalized()
+				if rotate_180:
+					dir = (secondary_controller.global_position - primary_controller.global_position).normalized()
+				reparenting_node.global_transform.basis = reparenting_node.global_transform.basis.looking_at(dir, Vector3.UP, true)
+			else:
+				reparenting_node.global_transform = target_node.global_transform
+				
+			if rotate_180 and not xr_two_handed_aim:
+				reparenting_node_holder.rotation_degrees = Vector3(0,180,0)
+			else:
+				reparenting_node_holder.rotation_degrees = Vector3(0,0,0)
+
+			reparenting_node_holder.transform.origin = target_offset
+			handle_reparented_node_smoothing()
+
+	# Try to smooth movement of reparented node to minimize jitter
+	func handle_reparented_node_smoothing():
+		if is_instance_valid(reparenting_node_holder) and is_instance_valid(reparented_node):
+			#var delta = xr_scene.get_process_delta_time()
+			# Set lerp speed to current FPS
+			var attach_lerp_speed : float = float(Performance.get_monitor(Performance.TIME_FPS))
+			var lerp_speed = attach_lerp_speed * xr_scene.get_process_delta_time()
+			# Get target rotation and position from source node
+			var new_pose_rotation = reparenting_node_holder.global_transform.basis.get_rotation_quaternion()
+			var new_position = reparenting_node_holder.global_transform.origin
+			# Get current destination node rotation and position
+			var last_pose_rotation = reparented_node.global_transform.basis.get_rotation_quaternion()
+			var last_position = reparented_node.global_transform.origin
+
+			# Get dot product of destination node's rotation and source node's rotation
+			# If the dot product is close to 1, it means the orientations are very similar, while if it's closer to -1, they are nearly opposite.
+			var spherical_distance = new_pose_rotation.dot(last_pose_rotation)
+
+			if (spherical_distance  < 0.0):
+				spherical_distance = -spherical_distance
+
+			# Get distance between source and destination node and scale smoothing to distance
+			var lenr = maxf(1.0, (new_position - last_position).length())
+			
+			# Lerp destination node's rotation and postion to source node's values, scaled by amount of difference between the two
+			# For some reason this does not work when we have to rotate the object by 180 degrees, so disabling for now in that circumstance
+			if rotate_180:
+				last_pose_rotation = reparenting_node_holder.global_transform.basis
+			else:	
+				last_pose_rotation = Basis(last_pose_rotation.slerp(new_pose_rotation, lerp_speed * spherical_distance))
+			last_position = last_position.lerp(new_position, minf(1.0, lerp_speed * lenr))
+			reparented_node.global_transform.basis = last_pose_rotation
+			reparented_node.global_transform.origin = last_position
 
 # Handle initiation of xr
 func _on_xr_started():
@@ -1237,15 +1307,19 @@ func find_and_set_active_camera_3d():
 				print("Camera's window is: ", camera.get_window())
 				remote_t = RemoteTransform3D.new()
 				remote_t.name = "XRRemoteTransform"
-				if xr_use_vehicle_mode:
-					remote_t.update_rotation = true
-				else:
-					remote_t.update_rotation = false
 				remote_t.update_scale = false
 				remote_t.remote_path = ""
 				camera.add_child(remote_t)
-				# If user has already set height at some point in session, adjust height by same for any new cameras that enter scene later
-				remote_t.transform.origin.y -= (user_height * xr_world_scale)
+				if xr_use_vehicle_mode:
+					remote_t.update_rotation = true
+					print("Now adjusting found camera3D height automatically due to vehicle mode...")
+					var vehicle_height_adjustment = xr_camera_3d.transform.origin.y
+					print("User height: ", vehicle_height_adjustment)
+					remote_t.transform.origin.y -= (vehicle_height_adjustment * xr_world_scale)
+				else:
+					remote_t.update_rotation = false
+					# If user has already set height at some point in session, adjust height by same for any new cameras that enter scene later
+					remote_t.transform.origin.y -= (user_height * xr_world_scale)
 				# Add cursor mesh
 				var cursor = cursor_3d.duplicate()
 				camera.add_child(cursor)
@@ -1331,7 +1405,9 @@ func find_active_world_environment_or_null():
 	var world_environment = get_node("/root").find_child("*Environment*", true, false)
 	# If found node is not actually the WorldEnvironment, check its children, and use the first one:
 	if world_environment and not world_environment.is_class("WorldEnvironment"):
-		world_environment = world_environment.find_children("*", "WorldEnvironment", true, false)[0]
+		var possible_environments = world_environment.find_children("*", "WorldEnvironment", true, false)
+		if possible_environments:
+			world_environment = possible_environments[0]
 	# If no node found or node is still not the WorldEnvironment, try running a search of lower case environment
 	if world_environment == null or not world_environment.is_class("WorldEnvironment"):
 		world_environment = get_node("/root").find_child("*environment*", true, false)
@@ -1471,6 +1547,9 @@ func set_xr_game_options():
 	# Enable arm swing jog or jump movement if enabled by the user
 	xr_physical_movement_controller.set_enabled(use_jog_movement, use_arm_swing_jump, primary_controller, secondary_controller, jog_triggers_sprint)
 
+	# Set xr roomscale controller for hmd or controller directed movement
+	xr_roomscale_controller.roomscale_controller_directed_movement = use_roomscale_controller_directed_movement
+	
 	# Show or Clear Welcome label / Splash Screen
 	if show_welcome_label and not welcome_label_already_shown:
 		welcome_label_3d.show()
@@ -1653,7 +1732,7 @@ func toggle_xr_gui_menu():
 	if xr_gui_menu.visible:
 		ugvr_menu_showing = true
 		# Get references to the nodes
-		var distance = 0.6 * xr_world_scale
+		var distance = 1.5 * xr_world_scale
 		var vertical_offset = -0.25 * xr_camera_3d.global_transform.origin.y
 		var horizontal_offset = -0.5 * xr_world_scale
 		# Get the camera's global transform
@@ -1663,7 +1742,7 @@ func toggle_xr_gui_menu():
 		var forward = -cam_transform.basis.z
 		forward.y = 0
 		forward = forward.normalized()
-		# Set the menu's position 2 units in front of the camera
+		# Set the menu's position in front of the camera
 		var menu_position: Vector3 = cam_transform.origin + forward * distance
 		# Offset height
 		menu_position.y += vertical_offset
@@ -1687,6 +1766,8 @@ func _on_xr_gui_setting_changed(setting_name: String, setting_value: Variant):
 		"primary_controller":
 			primary_controller_selection = setting_value
 			xr_config_handler.primary_controller_selection = setting_value
+			xr_config_handler.save_game_control_map_cfg_file(xr_config_handler.game_control_map_cfg_path)
+			
 		"use_controller_dir_movement":
 			use_roomscale_controller_directed_movement = setting_value
 			xr_config_handler.use_roomscale_controller_directed_movement = setting_value
@@ -1719,6 +1800,58 @@ func _on_xr_gui_setting_changed(setting_name: String, setting_value: Variant):
 			xr_config_handler.show_welcome_label = setting_value
 			xr_config_handler.save_game_options_cfg_file(xr_config_handler.game_options_cfg_path)
 		
+# Trigger XR controller haptics based on game actions if configured by user
+# trigger_haptic_pulse(action_name: String, frequency: float, amplitude: float, duration_sec: float, delay_sec: float)
+func _set_haptics(delta):
+	if not is_instance_valid(primary_controller) and not is_instance_valid(secondary_controller):
+		return
+	for action in game_actions_triggering_primary_haptics:
+		if Input.is_action_pressed(action):
+			primary_controller.trigger_haptic_pulse("haptic", 0.0, 1.0, 0.5, 0.0)
+	for action in game_actions_triggering_secondary_haptics:
+		if Input.is_action_pressed(action):
+			secondary_controller.trigger_haptic_pulse("haptic", 0.0, 1.0, 0.5, 0.0)
+
+
+# Trigger melee attacks specified by the user
+var primary_melee_attack_processing : bool = false
+var secondary_melee_attack_processing : bool = false
+func _process_melee_attacks(delta):
+	if not is_instance_valid(primary_controller) or not is_instance_valid(secondary_controller):
+		return
+	
+	if primary_controller_melee_velocity == 0.0 and secondary_controller_melee_velocity == 0.0:
+		return
+	
+	if primary_controller_melee_action == "" and secondary_controller_melee_action == "":
+		return
+	
+	# Only process if user has configured an action and velocity
+	if primary_controller_melee_action and primary_controller_melee_velocity > 0 and not primary_melee_attack_processing:
+		if primary_controller.get_pose():
+			var primary_velocity = primary_controller.get_pose().get_linear_velocity().length_squared()
+			if primary_velocity > primary_controller_melee_velocity:
+				primary_melee_attack_processing = true
+				print("Primary melee attack detected, velocity was: ", primary_velocity) 
+				Input.action_press(primary_controller_melee_action)
+				await get_tree().create_timer(0.2).timeout
+				Input.action_release(primary_controller_melee_action)
+				await get_tree().create_timer(primary_controller_melee_cooldown_secs).timeout
+				primary_melee_attack_processing = false
+
+	# Same
+	if secondary_controller_melee_action and secondary_controller_melee_velocity > 0 and not secondary_melee_attack_processing:
+		if secondary_controller.get_pose():
+			var secondary_velocity = secondary_controller.get_pose().get_linear_velocity().length_squared()
+			if secondary_velocity > secondary_controller_melee_velocity:
+				secondary_melee_attack_processing = true
+				print("Secondary melee attack detected, velocity was: ", secondary_velocity) 
+				Input.action_press(secondary_controller_melee_action)
+				await get_tree().create_timer(0.2).timeout
+				Input.action_release(secondary_controller_melee_action)
+				await get_tree().create_timer(secondary_controller_melee_cooldown_secs).timeout
+				secondary_melee_attack_processing = false
+
 # -----------------------------------------------------
 # EXPERIMENTAL SECTION - NOT FOR FINAL INJECTOR
 
@@ -1734,11 +1867,88 @@ func _on_xr_gui_setting_changed(setting_name: String, setting_value: Variant):
 #for node in get_nodes_in_scene(get_tree().current_scene):
 	#print("node name: ", node.name)
 	#print("node_path: ", node.get_path())
+var debug_first_run: bool = true
+var reparented_test_object
+@onready var debug_test_object = get_node_or_null("TestObject")
+func _reparent_test_object(delta):
+	if use_test_object_reparenting_code:
+		if debug_first_run:
+			if is_instance_valid(primary_controller) and is_instance_valid(secondary_controller):
+				debug_first_run = false
+				reparented_test_object = ReparentedNode.new(self)
+		if is_instance_valid(reparented_test_object) and is_instance_valid(debug_test_object):
+			reparented_test_object.set_variables(debug_test_object, primary_controller, false, primary_controller, secondary_controller, Vector3.ZERO, true)
+			reparented_test_object.handle_node_reparenting()
 
+var reparented_vostok_weapon
+var reparented_vostok_interactor
+var first_vostok_run : bool = true
 # Tests only for new reparenting weapon code; in the future the specific node will be set by menu or a modder could use the function above in another script
 func _set_vostok_gun(delta):
 	RenderingServer.viewport_set_scaling_3d_mode(currentRID, RenderingServer.VIEWPORT_SCALING_3D_MODE_BILINEAR)
+	
+	# Example code to show controls configured by mod defaults in game
+	if first_vostok_run:
+		if is_instance_valid(primary_controller) and is_instance_valid(secondary_controller):
+			first_vostok_run = false
+			reparented_vostok_interactor = ReparentedNode.new(self)
+			reparented_vostok_weapon = ReparentedNode.new(self)
+			var primary_label_child : Label3D = Label3D.new()
+			primary_label_child.pixel_size = 0.0001
+			primary_label_child.font_size = 128
+			primary_label_child.outline_size = 32
+			primary_label_child.text = """
+			-Primary Controller-
+			
+			Crouch: STICK DOWN
+			Ready gun for firing: GRIP
+			Ready knife for throwing: GRIP
+			Shoot: Trigger (while ready)
+			Throw Knife: Trigger (while ready)
+			Stab Knife: Trigger
+			Jump: Swing arms up or A / LOWER FACE BUTTON
+			Open Radial Menu: CLICK AND HOLD STICK
+			Hotkey: PLACE THUMB ON STICK
+			VR Options Menu: Controller to head / TRIGGER
+			Pointer Toggle for Menus: Controller to head / TRIGGER
+			Right Click in Menus: A / LOWER FACE BUTTON
+			
+			"""
+			primary_controller.add_child(primary_label_child)
+			primary_label_child.transform.origin.y = 0.2
+			
+			var secondary_label_child : Label3D = Label3D.new()
+			secondary_label_child.pixel_size = 0.0001
+			secondary_label_child.font_size = 128
+			secondary_label_child.outline_size = 32
+			secondary_label_child.text = """
+			-Secondary Controller-
+			
+			IMPORTANT!! Once in game, TO ACTIVATE VR CONTROLS, 
+			put hand over head, and press B/Y TOP FACE BUTTON Once
+			
+			Inventory: CLICK STICK + Hotkey
+			Pause Menu: B/Y TOP FACE BUTTON + Hotkey
+			Interact: GRIP
+			Grab / Place Item: HOLD Trigger
+			Prone: B/Y TOP FACE Button
+			Sprint: Swing arms or CLICK / HOLD Stick
+			Slash Knife: TRIGGER
+			"""
+			secondary_controller.add_child(secondary_label_child)
+			secondary_label_child.transform.origin.y = 0.2
+			await get_tree().create_timer(60.0).timeout
+			primary_label_child.hide()
+			secondary_label_child.hide()
+
 	if is_instance_valid(xr_roomscale_controller) and is_instance_valid(xr_roomscale_controller.camera_3d):
+		var interactor = xr_roomscale_controller.camera_3d.get_node_or_null("Interactor")
+		if is_instance_valid(interactor) and is_instance_valid(reparented_vostok_interactor):
+			reparented_vostok_interactor.set_variables(interactor, secondary_controller, false, primary_controller, secondary_controller, Vector3.ZERO, true)
+			reparented_vostok_interactor.handle_node_reparenting()
+			interactor.set_target_position(Vector3(0,0,-2))
+			interactor.force_raycast_update()
+
 		var vostok_weapons_node = xr_roomscale_controller.camera_3d.find_child("Weapons", false, false)
 		if vostok_weapons_node != null:
 			if vostok_weapons_node.get_child_count(true) > 0:
@@ -1753,36 +1963,16 @@ func _set_vostok_gun(delta):
 				if not is_instance_valid(vostok_weapon_mesh):
 					vostok_weapon_mesh = vostok_weapon.get_node_or_null("Sway/Noise/Tilt/Impulse/Instrument")
 				#print(vostok_weapon_mesh)
-				if is_instance_valid(vostok_weapon_mesh):
+				if is_instance_valid(vostok_weapon_mesh) and is_instance_valid(reparented_vostok_weapon):
 					var vostok_arms = vostok_weapon_mesh.find_child("MS_Arms", true, false)
 					if vostok_arms:
 						vostok_arms.visible = false
 						xr_reparenting_active = true
 						var rotate_reparented_node_180_degrees = true
-						handle_node_reparenting(delta, vostok_weapon_mesh, rotate_reparented_node_180_degrees, Vector3(0.0, 0.025, 0.025))
-				
-	elif is_instance_valid(current_camera):
-		var vostok_weapons_node = current_camera.find_child("Weapons", false, false)
-		if vostok_weapons_node != null:
-			if vostok_weapons_node.get_child_count(true) > 0:
-				var vostok_weapon = vostok_weapons_node.get_child(0, true)
-				#print(vostok_weapon)
-				var vostok_weapon_mesh = vostok_weapon.get_node_or_null("Handling/Sway/Noise/Tilt/Impulse/Recoil/Weapon")
-				# if that's not valid, try to see if it's a knife instead
-				if not is_instance_valid(vostok_weapon_mesh):
-					vostok_weapon_mesh = vostok_weapon.get_node_or_null("Handling/Sway/Noise/Tilt/Impulse/Knife")
-				# if that's still not valid, try to see if its a instrument instead
-				if not is_instance_valid(vostok_weapon_mesh):
-					vostok_weapon_mesh = vostok_weapon.get_node_or_null("Sway/Noise/Tilt/Impulse/Instrument")
-				#print(vostok_weapon_mesh)
-				if is_instance_valid(vostok_weapon_mesh):
-					var vostok_arms = vostok_weapon_mesh.find_child("MS_Arms", true, false)
-					if vostok_arms:
-						vostok_arms.visible = false
-						xr_reparenting_active = true
-						var rotate_reparented_node_180_degrees = true
-						handle_node_reparenting(delta, vostok_weapon_mesh, rotate_reparented_node_180_degrees, Vector3(0,0.025,0.025))
+						reparented_vostok_weapon.set_variables(vostok_weapon_mesh, primary_controller, rotate_reparented_node_180_degrees, primary_controller, secondary_controller, Vector3(0.0, 0.025, 0.025), true)
+						reparented_vostok_weapon.handle_node_reparenting()
 
+var reparented_beton_gun = ReparentedNode.new(self)	
 # Same, just experimental
 func _set_beton_gun(delta : float):
 	var gun_node = get_tree().get_root().get_node_or_null("LowresRoot/LowResViewport/Player/RotPoint")
@@ -1790,8 +1980,10 @@ func _set_beton_gun(delta : float):
 		gun_node.get_node("GunHold").transform.origin = Vector3(0,0,0)
 		xr_reparenting_active = true
 		var rotate_reparented_node_180_degrees = false
-		handle_node_reparenting(delta, gun_node, rotate_reparented_node_180_degrees)
+		reparented_beton_gun.set_variables(gun_node, primary_controller, rotate_reparented_node_180_degrees, primary_controller, secondary_controller, Vector3.ZERO, true)
+		reparented_beton_gun.handle_node_reparenting()
 
+var reparented_tar_object_picker = ReparentedNode.new(self)
 # Same, just experimental
 func _set_tar_object_picker(delta : float):
 	
@@ -1801,7 +1993,8 @@ func _set_tar_object_picker(delta : float):
 			object_picker_point.get_node("PlayerEyes/obj_picker_point").transform.origin = Vector3(0,0,0)
 			xr_reparenting_active = true
 			var rotate_reparented_node_180_degrees = false
-			handle_node_reparenting(delta, object_picker_point, rotate_reparented_node_180_degrees)
+			reparented_tar_object_picker.set_variables(object_picker_point, primary_controller, rotate_reparented_node_180_degrees, primary_controller, secondary_controller, Vector3.ZERO, true)
+			reparented_tar_object_picker.handle_node_reparenting()
 
 
 # Same, just experiemental - example of using custom code and variables with UGVR to get a specific game working better in VR after using the print tree functionality to get scene tree
@@ -1954,53 +2147,3 @@ func _set_CRUEL_gun(delta: float):
 						CRUEL_shotgun.visible = false
 						CRUEL_uzi.visible = true
 						CRUEL_revolver.visible = false
-
-# Trigger XR controller haptics based on game actions if configured by user
-# trigger_haptic_pulse(action_name: String, frequency: float, amplitude: float, duration_sec: float, delay_sec: float)
-func _set_haptics(delta):
-	if not is_instance_valid(primary_controller) and not is_instance_valid(secondary_controller):
-		return
-	for action in game_actions_triggering_primary_haptics:
-		if Input.is_action_pressed(action):
-			primary_controller.trigger_haptic_pulse("haptic", 0.0, 1.0, 0.5, 0.0)
-	for action in game_actions_triggering_secondary_haptics:
-		if Input.is_action_pressed(action):
-			secondary_controller.trigger_haptic_pulse("haptic", 0.0, 1.0, 0.5, 0.0)
-
-
-# Trigger melee attacks specified by the user
-var primary_melee_attack_processing : bool = false
-var secondary_melee_attack_processing : bool = false
-func _process_melee_attacks(delta):
-	if not is_instance_valid(primary_controller) or not is_instance_valid(secondary_controller):
-		return
-	
-	if primary_controller_melee_velocity == 0.0 and secondary_controller_melee_velocity == 0.0:
-		return
-	
-	if primary_controller_melee_action == "" and secondary_controller_melee_action == "":
-		return
-	
-	# Only process if user has configured an action and velocity
-	if primary_controller_melee_action and primary_controller_melee_velocity > 0 and not primary_melee_attack_processing:
-		var primary_velocity = primary_controller.get_pose().get_linear_velocity().length_squared()
-		if primary_velocity > primary_controller_melee_velocity:
-			primary_melee_attack_processing = true
-			print("Primary melee attack detected, velocity was: ", primary_velocity) 
-			Input.action_press(primary_controller_melee_action)
-			await get_tree().create_timer(0.2).timeout
-			Input.action_release(primary_controller_melee_action)
-			await get_tree().create_timer(primary_controller_melee_cooldown_secs).timeout
-			primary_melee_attack_processing = false
-
-	# Same
-	if secondary_controller_melee_action and secondary_controller_melee_velocity > 0 and not secondary_melee_attack_processing:
-		var secondary_velocity = secondary_controller.get_pose().get_linear_velocity().length_squared()
-		if secondary_velocity > secondary_controller_melee_velocity:
-			secondary_melee_attack_processing = true
-			print("Secondary melee attack detected, velocity was: ", secondary_velocity) 
-			Input.action_press(secondary_controller_melee_action)
-			await get_tree().create_timer(0.2).timeout
-			Input.action_release(secondary_controller_melee_action)
-			await get_tree().create_timer(secondary_controller_melee_cooldown_secs).timeout
-			secondary_melee_attack_processing = false

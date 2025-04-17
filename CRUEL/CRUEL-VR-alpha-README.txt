@@ -25,27 +25,25 @@ Click right stick in and then click left stick to emulate a start button press t
 
 --Gameplay--
 
-Bring up hand radial menu: place thumb on right thumb stick
+Bring up hand radial menu: click and hold right thumb stick
 
 Control hand radial menu: while thumb is placed on right thumb stick, hover over the option you want to choose (reload, revolver, uzi, shotgun) and then release your thumb stick.  Note that gun selections will only activate once you acquire a new gun.
 
 Jump: Right controller A (lower face button)
 
-Crouch: Left controller Grip
+Crouch: Left thumbstick click
 
 Shoot: Right trigger
 
 Kick: Left trigger
 
-Throw melee: Left controller Y (top face button)
+Throw melee: Left controller Y (top face button) + Right stick click
 
-Interact: Right controller B (top face button)
-
-Heal: (drink soda can once you have one): Left controller X (bottom face button) -HOLD until soda can is empty
+Heal: (drink soda can once you have one): Right controller top face button (B/Y) -HOLD until soda can is empty
 
 Reload: (alternative to radial menu): Right controller grip
 
-Sprint: Left Controller stick press
+Sprint: Left Controller grip
 
 Dog screen after level: After the level you may find yourself looking at black darkness.  Turn around.  You will then see a dog and two doors.  Use your left thumbstick left/right to choose the available options (gamble, feed me (only if you have a soda - earn a perk) and progress (go to next level)).
 
