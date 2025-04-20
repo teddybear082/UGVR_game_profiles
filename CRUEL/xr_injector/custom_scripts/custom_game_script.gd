@@ -43,6 +43,8 @@ void fragment() {
 
 # Put game specific custom variables here for your code, e.g., var game_name_important_node = null
 var first_time_reparenting_CRUEL_gun : bool = true
+var CRUEL_level_loaded : bool = false
+var CRUEL_level_indicator = null
 var CRUEL_camera_node = null
 var CRUEL_node3d = null
 var CRUEL_weapon_container = null
@@ -220,6 +222,13 @@ func _process(delta):
 						CRUEL_shotgun.visible = false
 						CRUEL_uzi.visible = true
 						CRUEL_revolver.visible = false
+	
+	if not CRUEL_level_loaded:
+		CRUEL_level_indicator = find_first_node_by_name("DoorExit")
+		if CRUEL_level_indicator:
+			CRUEL_level_loaded = true
+			xr_scene.xr_config_handler.load_action_map_file(xr_scene.xr_config_handler.game_action_map_cfg_path)
+			show_vr_control_mapping(20.0)
 
 # Called each physics frame
 func _physics_process(delta):
