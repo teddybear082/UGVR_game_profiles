@@ -1,0 +1,163 @@
+[gd_scene load_steps=22 format=3 uid="uid://e4ctdupwya3a"]
+
+[ext_resource type="Script" path="res://xr_injector/xr_scene.gd" id="1_fmh2y"]
+[ext_resource type="PackedScene" uid="uid://i1hto5hirreh" path="res://xr_injector/xr_pointer.tscn" id="2_l282w"]
+[ext_resource type="PackedScene" uid="uid://clc5dre31iskm" path="res://xr_injector/start_xr.tscn" id="2_rrkev"]
+[ext_resource type="PackedScene" uid="uid://clujaf3u776a3" path="res://xr_injector/xr_viewport_2d_in_3d.tscn" id="3_f316b"]
+[ext_resource type="PackedScene" uid="uid://bbvciliw3xnf6" path="res://xr_injector/xr_black_out.tscn" id="4_ny8kq"]
+[ext_resource type="Script" path="res://xr_injector/xr_roomscale_controller.gd" id="5_1018u"]
+[ext_resource type="PackedScene" uid="uid://c1n6gs0qo50sl" path="res://xr_injector/ugvr_logo.tscn" id="5_dgm18"]
+[ext_resource type="Script" path="res://xr_injector/xr_config_handler.gd" id="5_jiibt"]
+[ext_resource type="PackedScene" uid="uid://b4kad2kuba1yn" path="res://xr_injector/hands/scenes/lowpoly/left_hand_low.tscn" id="5_mxch7"]
+[ext_resource type="Script" path="res://xr_injector/xr_physical_movement_controller.gd" id="6_1wyxn"]
+[ext_resource type="PackedScene" uid="uid://cc6ngdqie8o8c" path="res://xr_injector/xr_vignette/vignette.tscn" id="6_2wp6c"]
+[ext_resource type="Material" uid="uid://cnids8g0cojet" path="res://xr_injector/hands/materials/labglove_transparent.tres" id="6_y01lc"]
+[ext_resource type="Script" path="res://xr_injector/xr_radial_menu.gd" id="7_hw5k1"]
+[ext_resource type="PackedScene" uid="uid://bs1477cm15a8m" path="res://xr_injector/xr_gui/xr_gui_menu.tscn" id="7_ienpi"]
+[ext_resource type="PackedScene" uid="uid://l2n30mpbkdyw" path="res://xr_injector/hands/scenes/lowpoly/right_hand_low.tscn" id="7_n8qcs"]
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_pnlj8"]
+resource_local_to_scene = true
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_10cyd"]
+margin = 0.01
+radius = 0.3
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_iwxk1"]
+radius = 0.2
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_7jhj5"]
+margin = 0.01
+radius = 0.1
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_8i68g"]
+radius = 0.2
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_gr4m3"]
+margin = 0.01
+radius = 0.1
+
+[node name="XrScene" type="Node3D"]
+process_mode = 3
+script = ExtResource("1_fmh2y")
+
+[node name="XROrigin3D" type="XROrigin3D" parent="."]
+process_mode = 3
+current = true
+
+[node name="StartXR" parent="XROrigin3D" instance=ExtResource("2_rrkev")]
+
+[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D"]
+attributes = SubResource("CameraAttributesPractical_pnlj8")
+
+[node name="Neck" type="Node3D" parent="XROrigin3D/XRCamera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0.1)
+
+[node name="XRMainViewport2Din3D" parent="XROrigin3D/XRCamera3D" instance=ExtResource("3_f316b")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, -2.8)
+viewport_size = Vector2(1920, 1080)
+unshaded = true
+
+[node name="XRSecondaryViewport2Din3D" parent="XROrigin3D/XRCamera3D" instance=ExtResource("3_f316b")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.3, -3.2)
+viewport_size = Vector2(1920, 1080)
+unshaded = true
+
+[node name="GestureArea" type="Area3D" parent="XROrigin3D/XRCamera3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.45, 0)
+collision_layer = 0
+collision_mask = 2097152
+
+[node name="GestureAreaShape" type="CollisionShape3D" parent="XROrigin3D/XRCamera3D/GestureArea"]
+shape = SubResource("SphereShape3D_10cyd")
+
+[node name="BlackOut" parent="XROrigin3D/XRCamera3D" instance=ExtResource("4_ny8kq")]
+
+[node name="WelcomeLabel3D" parent="XROrigin3D/XRCamera3D" instance=ExtResource("5_dgm18")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.5)
+visible = false
+
+[node name="Vignette" parent="XROrigin3D/XRCamera3D" instance=ExtResource("6_2wp6c")]
+
+[node name="XRController3D" type="XRController3D" parent="XROrigin3D"]
+process_mode = 3
+tracker = &"left_hand"
+pose = &"aim"
+
+[node name="GestureDetectionArea" type="Area3D" parent="XROrigin3D/XRController3D"]
+collision_layer = 2097152
+collision_mask = 0
+
+[node name="ControllerGestureShape" type="CollisionShape3D" parent="XROrigin3D/XRController3D/GestureDetectionArea"]
+shape = SubResource("SphereShape3D_iwxk1")
+
+[node name="XRViewportHolder" type="Node3D" parent="XROrigin3D/XRController3D"]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0.1)
+
+[node name="LeftHand" parent="XROrigin3D/XRController3D" instance=ExtResource("5_mxch7")]
+hand_material_override = ExtResource("6_y01lc")
+
+[node name="GUIDetectionArea" type="Area3D" parent="XROrigin3D/XRController3D"]
+collision_layer = 2147483648
+collision_mask = 2147483648
+monitoring = false
+
+[node name="GUIDetectionShape" type="CollisionShape3D" parent="XROrigin3D/XRController3D/GUIDetectionArea"]
+shape = SubResource("SphereShape3D_7jhj5")
+
+[node name="XRController3D2" type="XRController3D" parent="XROrigin3D"]
+process_mode = 3
+tracker = &"right_hand"
+pose = &"aim"
+
+[node name="GestureDetectionArea" type="Area3D" parent="XROrigin3D/XRController3D2"]
+collision_layer = 2097152
+collision_mask = 0
+
+[node name="ControllerGestureShape" type="CollisionShape3D" parent="XROrigin3D/XRController3D2/GestureDetectionArea"]
+shape = SubResource("SphereShape3D_8i68g")
+
+[node name="XRViewportHolder" type="Node3D" parent="XROrigin3D/XRController3D2"]
+transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 0, 0.1)
+
+[node name="RightHand" parent="XROrigin3D/XRController3D2" instance=ExtResource("7_n8qcs")]
+hand_material_override = ExtResource("6_y01lc")
+
+[node name="GUIDetectionArea" type="Area3D" parent="XROrigin3D/XRController3D2"]
+collision_layer = 2147483648
+collision_mask = 2147483648
+monitoring = false
+
+[node name="GUIDetectionShape" type="CollisionShape3D" parent="XROrigin3D/XRController3D2/GUIDetectionArea"]
+shape = SubResource("SphereShape3D_gr4m3")
+
+[node name="XRPointer" parent="XROrigin3D" instance=ExtResource("2_l282w")]
+process_mode = 3
+show_target = true
+target_radius = 0.01
+collision_mask = 2152726528
+collide_with_areas = true
+suppress_radius = 0.07
+
+[node name="XRRoomscaleController" type="Node" parent="XROrigin3D"]
+script = ExtResource("5_1018u")
+
+[node name="XRPhysicalMovementController" type="Node" parent="XROrigin3D"]
+script = ExtResource("6_1wyxn")
+
+[node name="XRConfigHandler" type="Node" parent="."]
+script = ExtResource("5_jiibt")
+
+[node name="XRAutoSaveTimer" type="Timer" parent="."]
+wait_time = 180.0
+
+[node name="XRRadialMenu" type="Node3D" parent="."]
+script = ExtResource("7_hw5k1")
+
+[node name="XRReparentingNode" type="Node3D" parent="."]
+
+[node name="XRReparentingNodeHolder" type="Node3D" parent="XRReparentingNode"]
+
+[node name="XRGUIMenu" parent="." instance=ExtResource("7_ienpi")]
+top_level = true
+visible = false
